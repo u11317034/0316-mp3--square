@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>2D 霓虹變色跳動方形</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #404040; font-family: 'Segoe UI', sans-serif; }
+        
+        #ui-layer {
+            position: absolute; top: 20px; left: 20px;
+            z-index: 10; color: #ffffff;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px; border-radius: 8px; border: 1px solid #ffccff;
+        }
+        
+        input[type="file"] { margin-top: 10px; color: #ccc; }
+        .status { font-size: 0.9em; margin-top: 10px; color: #ddd; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h3>音樂視覺化工具 (碰撞變色版)</h3>
+        <p>請選擇 MP3 檔案：</p>
+        <input type="file" id="audioUpload" accept="audio/*">
+        <div class="status" id="statusText">等待上傳中...</div>
+    </div>
+
+    <audio id="audioPlayer"></audio>
+    <canvas id="visualCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('visualCanvas');
+        const ctx = canvas.getContext('2d');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const fileInput = document.getElementById('audioUpload');
+        const statusText = document.getElementById('statusText');
+
+        let audioCtx, analyser, source, dataArray;
+
+        // 預設的亮色霓虹清單 (確保不會與灰色背景混淆)
+        const neonColors = [
+            '#ff00ff', // 霓虹粉
+            '#00ffff', // 電子青
+            '#00ff00', // 螢光綠
+            '#ffff00', // 亮黃
+            '#ff9900', // 亮橘
+            '#ff3366', // 櫻桃紅
+            '#ffffff'  // 純白光
+        ];
+
+        let square = {
+            baseSize: 65,
+            size: 65,
+            x: 100, y: 100,
+            vx: 3.5, vy: 2.5,
+            color: '#ffffff',      // 方形核心維持亮白色
+            glowColor: '#ff00ff'  // 初始光芒顏色
+        };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        fileInput.onchange = function() {
+            const file = this.files[0];
+            if (!file) return;
+            audioPlayer.src = URL.createObjectURL(file);
+            statusText.innerText = "正在播放: " + file.name;
+            setupAudioAnalysis();
+            audioPlayer.play();
+            drawLoop();
+        };
+
+        function setupAudioAnalysis() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioCtx.createAnalyser();
+                source = audioCtx.createMediaElementSource(audioPlayer);
+                source.connect(analyser);
+                analyser.connect(audioCtx.destination);
+                analyser.fftSize = 256;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+            }
+        }
+
+        // 隨機更換霓虹顏色的函數
+        function changeColor() {
+            const randomIndex = Math.floor(Math.random() * neonColors.length);
+            square.glowColor = neonColors[randomIndex];
+        }
+
+        function drawLoop() {
+            if (!audioPlayer.paused) {
+                requestAnimationFrame(drawLoop);
+            }
+
+            // 背景改為指定的 #404040
+            ctx.fillStyle = '#404040';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            let volumeScale = 1.0;
+            if (analyser) {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0;
+                for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+                volumeScale = 1.0 + (sum / dataArray.length / 60);
+            }
+            
+            const targetSize = square.baseSize * volumeScale;
+            square.size += (targetSize - square.size) * 0.2;
+
+            // 移動與碰撞偵測
+            square.x += square.vx;
+            square.y += square.vy;
+
+            // 碰到左右牆壁
+            if (square.x + square.size > canvas.width || square.x < 0) {
+                square.vx *= -1;
+                changeColor(); // 觸發變色
+            }
+            // 碰到上下牆壁
+            if (square.y + square.size > canvas.height || square.y < 0) {
+                square.vy *= -1;
+                changeColor(); // 觸發變色
+            }
+
+            // 繪製
+            ctx.save();
+            ctx.shadowColor = square.glowColor;
+            ctx.shadowBlur = 20 * volumeScale; // 光芒隨音量閃爍
+            
+            ctx.fillStyle = square.color; // 方形主體
+            ctx.fillRect(square.x, square.y, square.size, square.size);
+            
+            // 加上一層與光芒同色的邊框，強化視覺感
+            ctx.strokeStyle = square.glowColor;
+            ctx.lineWidth = 3;
+            ctx.strokeRect(square.x, square.y, square.size, square.size);
+            
+            ctx.restore();
+        }
+    </script>
+</body>
+</html>
